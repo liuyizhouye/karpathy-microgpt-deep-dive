@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Strip outputs from Jupyter notebooks before commit.
+"""Strip outputs from Jupyter notebooks.
 
-This script intentionally uses only the Python standard library so the Git hook
-does not depend on nbstripout, pre-commit, or Jupyter being installed.
+This script intentionally uses only the Python standard library so local
+pre-commit hooks and CI checks do not depend on nbstripout or Jupyter.
 """
 
 from __future__ import annotations
@@ -44,6 +44,20 @@ def all_notebooks(root: Path) -> list[Path]:
             continue
         notebooks.append(path.relative_to(root))
     return sorted(notebooks)
+
+
+def selected_notebooks(root: Path, filenames: list[str]) -> list[Path]:
+    notebooks: list[Path] = []
+    for filename in filenames:
+        path = Path(filename)
+        if path.suffix != ".ipynb":
+            continue
+        abs_path = path if path.is_absolute() else root / path
+        try:
+            notebooks.append(abs_path.resolve().relative_to(root.resolve()))
+        except ValueError:
+            print(f"Skipping notebook outside repository: {filename}", file=sys.stderr)
+    return sorted(dict.fromkeys(notebooks))
 
 
 def has_unstaged_changes(path: Path) -> bool:
@@ -103,6 +117,12 @@ def main() -> int:
         action="store_true",
         help="clean every notebook in the repository",
     )
+    group.add_argument(
+        "--files",
+        nargs="+",
+        metavar="NOTEBOOK",
+        help="clean specific notebook files; intended for pre-commit",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
@@ -111,7 +131,12 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    targets = staged_notebooks() if args.staged else all_notebooks(root)
+    if args.staged:
+        targets = staged_notebooks()
+    elif args.all:
+        targets = all_notebooks(root)
+    else:
+        targets = selected_notebooks(root, args.files)
     if not targets:
         return 0
 
