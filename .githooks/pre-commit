@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+python3 scripts/strip_notebook_outputs.py --staged
